@@ -1,0 +1,79 @@
+name: apex-ecommerce
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: apex-ecommerce-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: apex_ecommerce
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devpass}
+      POSTGRES_DB: apex_ecommerce
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - apex_ecommerce_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+    image: apex-ecommerce:latest
+    container_name: apex-ecommerce-app
+    group_add:
+      - "1000"
+    restart: unless-stopped
+    init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
+      JOBS_AUTORUN: "true"
+      SITE_URL: ${SITE_URL:-http://localhost:3001}
+      USER_INVITE_EXPIRY_HOURS: ${USER_INVITE_EXPIRY_HOURS:-72}
+      MIDTRANS_SERVER_KEY: ${MIDTRANS_SERVER_KEY:-}
+      MIDTRANS_IS_PRODUCTION: ${MIDTRANS_IS_PRODUCTION:-false}
+      XENDIT_SECRET_KEY: ${XENDIT_SECRET_KEY:-}
+      XENDIT_CALLBACK_TOKEN: ${XENDIT_CALLBACK_TOKEN:-}
+
+      DATABASE_URL: postgresql://apex_ecommerce:${POSTGRES_PASSWORD:-devpass}@postgres:5432/apex_ecommerce
+      PAYLOAD_SECRET: ${PAYLOAD_SECRET:?Set PAYLOAD_SECRET in .env}
+
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM_ADDRESS: ${SMTP_FROM_ADDRESS:-}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-APEX}
+    ports:
+      - "127.0.0.1:3002:3000"
+    volumes:
+      - ./media:/app/media
+
+  migrate:
+    profiles: ['tools']
+    build:
+      context: .
+      target: builder
+    image: apex-ecommerce-builder:latest
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://apex_ecommerce:${POSTGRES_PASSWORD:-devpass}@postgres:5432/apex_ecommerce
+      PAYLOAD_SECRET: ${PAYLOAD_SECRET:?Set PAYLOAD_SECRET in .env}
+    command: ["npm", "run", "payload", "--", "migrate"]
+
+volumes:
+  apex_ecommerce_pgdata:
