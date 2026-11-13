@@ -87,6 +87,7 @@ export interface Config {
     'stock-movements': StockMovement;
     carts: Cart;
     orders: Order;
+    'order-status-events': OrderStatusEvent;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
     'payload-locked-documents': PayloadLockedDocument;
@@ -115,6 +116,7 @@ export interface Config {
     'stock-movements': StockMovementsSelect<false> | StockMovementsSelect<true>;
     carts: CartsSelect<false> | CartsSelect<true>;
     orders: OrdersSelect<false> | OrdersSelect<true>;
+    'order-status-events': OrderStatusEventsSelect<false> | OrderStatusEventsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -1345,6 +1347,21 @@ export interface Order {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "order-status-events".
+ */
+export interface OrderStatusEvent {
+  id: number;
+  order: number | Order;
+  fromStatus?: ('pending' | 'paid' | 'processing' | 'shipped' | 'completed' | 'cancelled' | 'expired') | null;
+  toStatus: 'pending' | 'paid' | 'processing' | 'shipped' | 'completed' | 'cancelled' | 'expired';
+  source: 'customer' | 'staff' | 'system' | 'gateway';
+  actor?: (number | null) | User;
+  note?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -1547,6 +1564,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'orders';
         value: number | Order;
+      } | null)
+    | ({
+        relationTo: 'order-status-events';
+        value: number | OrderStatusEvent;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -2459,6 +2480,20 @@ export interface OrdersSelect<T extends boolean = true> {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "order-status-events_select".
+ */
+export interface OrderStatusEventsSelect<T extends boolean = true> {
+  order?: T;
+  fromStatus?: T;
+  toStatus?: T;
+  source?: T;
+  actor?: T;
+  note?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv_select".
  */
 export interface PayloadKvSelect<T extends boolean = true> {
@@ -2547,6 +2582,9 @@ export interface SiteSetting {
   navigation?:
     | {
         label: string;
+        /**
+         * Path lokal harus diawali /, mis. /booking. External gunakan https://.
+         */
         href: string;
         id?: string | null;
       }[]

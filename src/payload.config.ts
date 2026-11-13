@@ -37,6 +37,7 @@ import { shopEndpoints } from './shop/endpoints'
 import { expireBookingsTask } from './jobs/expireBookings'
 import { bookingRemindersTask } from './jobs/bookingReminders'
 import { Orders } from './collections/Orders'
+import { OrderStatusEvents } from './collections/OrderStatusEvents'
 import { expireOrdersTask } from './jobs/expireOrders'
 
 const filename = fileURLToPath(import.meta.url)
@@ -72,7 +73,7 @@ export default buildConfig({
       },
     },
   },
-  collections: [Users, Media, Videos, Projects, Pages, PostCategories, Posts, Contacts, Visits, EditorialReviews, EditorialNotes, ServicePackages, BookingBlackouts, Bookings, Addresses, ProductCategories, Products, StockMovements, Carts, Orders],
+  collections: [Users, Media, Videos, Projects, Pages, PostCategories, Posts, Contacts, Visits, EditorialReviews, EditorialNotes, ServicePackages, BookingBlackouts, Bookings, Addresses, ProductCategories, Products, StockMovements, Carts, Orders, OrderStatusEvents],
   globals: [SiteSettings, ContactSettings, WorkflowSettings, BookingSettings],
   endpoints: [...editorialEndpoints, ...userEndpoints, ...shopEndpoints],
   jobs: {

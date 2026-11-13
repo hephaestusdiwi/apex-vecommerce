@@ -1,10 +1,12 @@
 import { randomBytes } from 'node:crypto'
-import { APIError, type Payload, type PayloadRequest } from 'payload'
+import { timingSafeEqual } from 'node:crypto'
+import { APIError, type Payload, type Where } from 'payload'
 import { isActiveLoggedIn } from '@/access'
 import type { Actor } from './cart'
 import { hashToken } from './cart'
 import { withAdvisoryLock } from './lock'
 import { recordSystemMovement } from './stock'
+import { canTransition, isOrderStatus, ORDER_STATUS_LABEL, type OrderStatus, type TransitionSource } from './orderStatus'
 import { createGatewayPayment, resolveGateway, type PaymentEvent } from '@/lib/payments'
 import { SITE_URL } from '@/lib/seo'
 
@@ -24,19 +26,6 @@ const cartLock = (actor: Actor) => actor.user && isActiveLoggedIn(actor.user)
   : `cart:t${hashToken(actor.token ?? 'none').slice(0, 32)}`
 
 const idOf = (value: unknown) => Number(typeof value === 'object' && value ? (value as { id: number }).id : value)
-
-async function releaseReservedStock(payload: Payload, req: PayloadRequest, order: StoredOrder) {
-  if (order.stockReleasedAt) return false
-  for (const line of order.items ?? []) {
-    if (line.trackStock && line.quantity > 0) {
-      await recordSystemMovement(payload, {
-        productId: Number(line.productId), delta: line.quantity, reason: 'order_release', reference: order.code,
-        note: 'Reservasi dilepas karena pembayaran kedaluwarsa atau gagal dibuat.',
-      }, req)
-    }
-  }
-  return true
-}
 
 /** Revalidates cart prices and reserves tracked inventory before creating a hosted checkout session. */
 export async function checkoutCart(payload: Payload, actor: Actor, raw: Record<string, unknown>) {
@@ -70,7 +59,7 @@ export async function checkoutCart(payload: Payload, actor: Actor, raw: Record<s
   const holdUntil = new Date(Date.now() + holdHours * 3_600_000).toISOString()
 
   const order = await withAdvisoryLock(payload, cartLock(actor), async (req) => {
-    const where = actor.user && isActiveLoggedIn(actor.user)
+    const where: Where | null = actor.user && isActiveLoggedIn(actor.user)
       ? { customer: { equals: actor.user.id } }
       : actor.token ? { tokenHash: { equals: hashToken(actor.token) } } : null
     if (!where) throw fail(401, 'Keranjang tidak ditemukan. Muat ulang halaman lalu coba lagi.')
@@ -108,7 +97,7 @@ export async function checkoutCart(payload: Payload, actor: Actor, raw: Record<s
     const doc = await payload.create({
       collection: 'orders', overrideAccess: true, req,
       data: {
-        code, accessToken, cart: cart.id, customer: actor.user && isActiveLoggedIn(actor.user) ? actor.user.id : undefined,
+        code, accessToken, cart: cart.id, customer: actor.user && isActiveLoggedIn(actor.user) ? Number(actor.user.id) : undefined,
         customerName: name, customerEmail: email, customerPhone: phone, shippingAddress, notes: notes || undefined,
         items: lines as never, subtotal: total, total, status: 'pending', holdUntil,
         payment: { gateway: gateway.provider, reference: code, amount: total, status: 'pending' },
@@ -128,15 +117,16 @@ export async function checkoutCart(payload: Payload, actor: Actor, raw: Record<s
   if (!payment.ok) {
     await withAdvisoryLock(payload, orderLock(order.id), async (req) => {
       const current = await payload.findByID({ collection: 'orders', id: order.id, depth: 0, overrideAccess: true, req }) as unknown as StoredOrder
-      const released = await releaseReservedStock(payload, req, current)
       const cartId = current.cart ? idOf(current.cart) : 0
       if (cartId) await payload.update({
         collection: 'carts', id: cartId, overrideAccess: true, req,
         data: { items: (current.items ?? []).map((line) => ({ product: Number(line.productId), quantity: line.quantity, priceSeen: line.unitPrice })) as never, lastActiveAt: new Date().toISOString() },
       })
+      // Hook Orders mengembalikan stok reservasi dan mencatat riwayat.
       await payload.update({
         collection: 'orders', id: current.id, overrideAccess: true, req,
-        data: { status: 'cancelled', stockReleasedAt: released ? new Date().toISOString() : current.stockReleasedAt, payment: { ...current.payment, status: 'failed' } },
+        context: { orderTransition: { source: 'system', note: 'Sesi pembayaran gagal dibuat.' } },
+        data: { status: 'cancelled', payment: { ...current.payment, status: 'failed' } as never },
       })
     })
     throw fail(502, payment.message)
@@ -171,20 +161,19 @@ export async function handleOrderPaymentEvent(payload: Payload, event: PaymentEv
     const currentStatus = String(payment.status ?? 'pending')
     if (currentStatus === 'paid' && !['paid', 'refunded', 'partially_refunded'].includes(event.status)) return
 
-    let stockReleasedAt = order.stockReleasedAt
-    let inventoryReview = false
-    if (event.status === 'paid') inventoryReview = Boolean(order.stockReleasedAt)
-    if (event.status === 'expired' && !order.stockReleasedAt) {
-      const released = await releaseReservedStock(payload, req, order)
-      if (released) stockReleasedAt = new Date().toISOString()
-    }
-    const nextOrderStatus = event.status === 'paid' ? 'paid' : event.status === 'expired' ? 'expired' : order.status
+    const current = (isOrderStatus(order.status) ? order.status : 'pending') as OrderStatus
+    const wanted: OrderStatus | null = event.status === 'paid' ? 'paid' : event.status === 'expired' ? 'expired' : null
+    const change = wanted && canTransition(current, wanted, 'gateway') ? wanted : null
+    // Pembayaran terlambat (stok sudah dilepas): diterima, tetapi ditandai agar staf meninjau stok/refund.
+    const inventoryReview = event.status === 'paid' ? Boolean(order.stockReleasedAt) : false
     await payload.update({
       collection: 'orders', id: order.id, overrideAccess: true, req,
+      context: { orderTransition: { source: 'gateway', note: `Notifikasi ${event.provider}: ${event.status}.` } },
       data: {
-        status: nextOrderStatus, stockReleasedAt, inventoryReview,
+        ...(change ? { status: change } : {}),
+        inventoryReview,
         payment: { ...payment, gateway: event.provider, reference: event.reference, status: event.status,
-          providerTransactionId: event.providerTransactionId, paidAt: event.status === 'paid' ? (payment.paidAt ?? new Date().toISOString()) : payment.paidAt },
+          providerTransactionId: event.providerTransactionId, paidAt: event.status === 'paid' ? (payment.paidAt ?? new Date().toISOString()) : payment.paidAt } as never,
       },
     })
   })
@@ -195,11 +184,94 @@ export async function expireOrder(payload: Payload, id: number | string) {
   await withAdvisoryLock(payload, orderLock(id), async (req) => {
     const order = await payload.findByID({ collection: 'orders', id, depth: 0, overrideAccess: true, req }) as unknown as StoredOrder
     if (order.status !== 'pending' || !order.holdUntil || new Date(order.holdUntil).getTime() > Date.now() || order.payment?.status === 'paid') return
-    const released = await releaseReservedStock(payload, req, order)
     await payload.update({
       collection: 'orders', id, overrideAccess: true, req,
-      data: { status: 'expired', stockReleasedAt: released ? new Date().toISOString() : order.stockReleasedAt,
-        payment: { ...order.payment, status: order.payment?.status === 'pending' ? 'expired' : order.payment?.status } },
+      context: { orderTransition: { source: 'system', note: 'Batas waktu pembayaran habis.' } },
+      data: { status: 'expired', payment: { ...order.payment, status: order.payment?.status === 'pending' ? 'expired' : order.payment?.status } as never },
     })
   })
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Akun pelanggan: daftar, detail, dan pembatalan pesanan.
+// ---------------------------------------------------------------------------------------------------------------------
+
+export type OrderEventView = { from: OrderStatus | null; to: OrderStatus; label: string; at: string }
+export type OrderView = {
+  code: string; status: OrderStatus; statusLabel: string; paymentStatus: string | null
+  subtotal: number; total: number; createdAt: string; holdUntil: string | null
+  shippingAddress: string; notes: string | null
+  items: Array<{ productId: string; title: string; sku: string | null; unitPrice: number; quantity: number; lineTotal: number }>
+  checkoutUrl: string | null; canCancel: boolean; history: OrderEventView[]
+}
+
+const safeEqual = (a: string, b: string) => {
+  const x = Buffer.from(a)
+  const y = Buffer.from(b)
+  return x.length === y.length && timingSafeEqual(x, y)
+}
+
+/** Pesanan milik akun yang login, atau yang `token`-nya cocok. Selain itu dianggap tidak ada (404), agar nomor pesanan tidak bisa ditebak. */
+async function findAccessible(payload: Payload, code: string, user: Actor['user'], token: string | null) {
+  const found = (await payload.find({ collection: 'orders', where: { code: { equals: code } }, limit: 1, depth: 0, overrideAccess: true })).docs[0]
+  if (!found) return null
+  const owner = user && isActiveLoggedIn(user) && found.customer != null && String(idOf(found.customer)) === String(user.id)
+  const byToken = !!token && safeEqual(token, found.accessToken)
+  return owner || byToken ? found : null
+}
+
+async function toOrderView(payload: Payload, order: NonNullable<Awaited<ReturnType<typeof findAccessible>>>): Promise<OrderView> {
+  const events = await payload.find({ collection: 'order-status-events', where: { order: { equals: order.id } }, sort: 'createdAt', limit: 100, depth: 0, overrideAccess: true })
+  const status = (isOrderStatus(order.status) ? order.status : 'pending') as OrderStatus
+  const pay = order.payment?.status ?? null
+  return {
+    code: order.code, status, statusLabel: ORDER_STATUS_LABEL[status], paymentStatus: pay,
+    subtotal: order.subtotal, total: order.total, createdAt: order.createdAt, holdUntil: order.holdUntil ?? null,
+    shippingAddress: order.shippingAddress, notes: order.notes ?? null,
+    items: (order.items ?? []).map((i) => ({ productId: i.productId, title: i.title, sku: i.sku ?? null, unitPrice: i.unitPrice, quantity: i.quantity, lineTotal: i.lineTotal })),
+    checkoutUrl: status === 'pending' && pay === 'pending' ? order.payment?.checkoutUrl ?? null : null,
+    canCancel: status === 'pending' && pay !== 'paid',
+    history: events.docs.map((e) => ({
+      from: isOrderStatus(e.fromStatus) ? e.fromStatus : null, to: e.toStatus as OrderStatus,
+      label: ORDER_STATUS_LABEL[e.toStatus as OrderStatus], at: e.createdAt,
+    })),
+  }
+}
+
+export async function listOrdersForCustomer(payload: Payload, user: NonNullable<Actor['user']>, page = 1) {
+  if (!isActiveLoggedIn(user)) throw fail(401, 'Silakan masuk.')
+  const res = await payload.find({
+    collection: 'orders', where: { customer: { equals: user.id } }, sort: '-createdAt', limit: 20, page: Math.max(1, Math.floor(page) || 1), depth: 0, overrideAccess: true,
+  })
+  return {
+    orders: res.docs.map((o) => ({
+      code: o.code, status: o.status as OrderStatus, statusLabel: ORDER_STATUS_LABEL[o.status as OrderStatus], paymentStatus: o.payment?.status ?? null,
+      total: o.total, itemCount: (o.items ?? []).reduce((n, i) => n + i.quantity, 0), createdAt: o.createdAt,
+    })),
+    page: res.page ?? 1, totalPages: res.totalPages,
+  }
+}
+
+export async function getOrderForCustomer(payload: Payload, actor: Actor, code: string, token: string | null) {
+  const order = await findAccessible(payload, code, actor.user, token)
+  if (!order) throw fail(404, 'Pesanan tidak ditemukan.')
+  return toOrderView(payload, order)
+}
+
+/** Pelanggan membatalkan pesanan yang belum dibayar; stok reservasi dikembalikan oleh hook Orders. */
+export async function cancelOrderByCustomer(payload: Payload, actor: Actor, code: string, token: string | null) {
+  const found = await findAccessible(payload, code, actor.user, token)
+  if (!found) throw fail(404, 'Pesanan tidak ditemukan.')
+  await withAdvisoryLock(payload, orderLock(found.id), async (req) => {
+    const order = await payload.findByID({ collection: 'orders', id: found.id, depth: 0, overrideAccess: true, req })
+    if (order.status !== 'pending' || order.payment?.status === 'paid' || !canTransition('pending', 'cancelled', 'customer')) {
+      throw fail(409, 'Pesanan ini sudah tidak bisa dibatalkan.')
+    }
+    await payload.update({
+      collection: 'orders', id: order.id, overrideAccess: true, req,
+      context: { orderTransition: { source: 'customer', note: 'Dibatalkan oleh pelanggan.' } },
+      data: { status: 'cancelled', payment: { ...order.payment, status: order.payment?.status === 'pending' ? 'cancelled' : order.payment?.status } as never },
+    })
+  })
+  return getOrderForCustomer(payload, actor, code, token)
 }

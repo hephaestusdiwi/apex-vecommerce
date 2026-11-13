@@ -1,6 +1,7 @@
 import type { Field, GlobalConfig, SelectFieldValidation, UploadFieldSingleValidation } from "payload";
 import { adminOnly } from '../access'
 import { seoField } from '../fields/seo'
+import { isSafeHref } from '../lib/href'
 import { FONT_MIME_TYPES, GOOGLE_FONT_OPTIONS, fontFormatOfMedia, isGoogleFontKey } from '../lib/fonts'
 
 type FontSiblings = { source?: string | null }
@@ -99,7 +100,15 @@ export const SiteSettings: GlobalConfig = {
             label: { singular: 'Item', plural: 'Navigasi' },
             fields: [
                 { name: 'label', type: 'text', required: true },
-                { name: 'href', type: 'text', required: true },
+                {
+                    name: 'href',
+                    type: 'text',
+                    required: true,
+                    validate: (value?: string | null) =>
+                        (typeof value === 'string' && isSafeHref(value)) ||
+                        'Gunakan path seperti /booking, URL https://, mailto:, tel:, atau #anchor.',
+                    admin: { description: 'Path lokal harus diawali /, mis. /booking. External gunakan https://.' },
+                },
             ],
         },
         {

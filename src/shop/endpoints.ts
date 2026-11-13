@@ -3,6 +3,7 @@ import { rateLimit } from '@/lib/rateLimit'
 import { REGISTER_LIMIT } from './constants'
 import { registerCustomer } from './customers'
 import { cartEndpoints } from './cartEndpoints'
+import { orderEndpoints } from './orderEndpoints'
 import { clientIp, isTrustedOrigin, json, readBody } from './http'
 
 /**
@@ -11,6 +12,7 @@ import { clientIp, isTrustedOrigin, json, readBody } from './http'
  */
 export const shopEndpoints: Endpoint[] = [
   ...cartEndpoints,
+  ...orderEndpoints,
   {
     path: '/shop/register',
     method: 'post',
