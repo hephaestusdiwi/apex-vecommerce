@@ -7,6 +7,78 @@
   --color-ink: #ffffff;
   --color-mute: #9b9b9b;
   --color-accent: #fc5c18;
+  /* Permukaan tile/kartu dan garis tipis di halaman toko. Nama sengaja bukan `surface`/`line` supaya tidak mengubah halaman lain. */
+  --color-tile: #0d0d0d;
+  --color-notice: #bf4800;
+  --color-hairline: rgb(255 255 255 / 0.12);
+}
+
+/*
+ * Halaman toko (beranda, /shop, /shop/[slug]) memakai tema terang ala katalog Apple. Cukup menukar token warna di <html>:
+ * header dan footer ikut berubah, dan halaman lain (portfolio, keranjang, dll.) tidak tersentuh.
+ * Halaman menandai dirinya dengan data-store="light".
+ */
+html:has([data-store='light']) {
+  --color-paper: #ffffff;
+  --color-ink: #1d1d1f;
+  --color-mute: #6e6e73;
+  --color-accent: #0066cc;
+  --color-tile: #f5f5f7;
+  --color-hairline: rgb(0 0 0 / 0.1);
+  --store-pad: 1.25rem;
+  --store-max: 1260px;
+}
+
+@media (min-width: 768px) {
+  html:has([data-store='light']) {
+    --store-pad: 2rem;
+  }
+}
+
+/* Halaman detail produk memakai tema gelap seperti halaman produk Apple. Penandanya data-store="dark". */
+html:has([data-store='dark']) {
+  --color-paper: #000000;
+  --color-ink: #f5f5f7;
+  --color-mute: #86868b;
+  --color-accent: #0071e3;
+  --color-tile: #1d1d1f;
+  --color-hairline: rgb(255 255 255 / 0.14);
+  --color-notice: #ff9f0a;
+  --store-pad: 1.25rem;
+  --store-max: 1260px;
+}
+
+@media (min-width: 768px) {
+  html:has([data-store='dark']) {
+    --store-pad: 2rem;
+  }
+}
+
+/*
+ * Header global (anak langsung <body>) ikut sejajar dengan container toko, bukan melebar penuh. Hanya di halaman toko.
+ * Sengaja `body > header`: <header> lain di dalam halaman tidak boleh terkena padding ini.
+ */
+html:has([data-store='light']) body > header,
+html:has([data-store='dark']) body > header {
+  padding-inline: max(var(--store-pad), calc((100% - var(--store-max)) / 2 + var(--store-pad)));
+}
+
+/* Container tetap halaman toko, setara .container Bootstrap: lebar maksimum, di tengah, dengan gutter di sisi. */
+@utility store-container {
+  width: 100%;
+  max-width: var(--store-max, 1260px);
+  margin-inline: auto;
+  padding-inline: var(--store-pad, 1.25rem);
+}
+
+/* Isian progress pada titik slider aktif (MediaSlider); animationend-nya yang memajukan slide. */
+@keyframes slider-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 
 @theme inline {

@@ -1221,7 +1221,54 @@ export interface Product {
    */
   slug?: string | null;
   sku?: string | null;
+  /**
+   * Opsional. Kalimat singkat di bawah nama produk (kartu katalog dan halaman detail).
+   */
+  tagline?: string | null;
   description?: string | null;
+  /**
+   * Opsional. Tampil sebagai bagian sorotan di halaman detail, sesuai urutan di sini.
+   */
+  highlights?:
+    | {
+        /**
+         * Bentuk seksi ini di halaman detail.
+         */
+        layout?: ('media' | 'split' | 'statement' | 'explorer') | null;
+        /**
+         * Opsional. Teks kecil di atas judul.
+         */
+        eyebrow?: string | null;
+        title: string;
+        text?: string | null;
+        /**
+         * Opsional. Tidak dipakai pada tata letak pernyataan besar.
+         */
+        image?: (number | null) | Media;
+        /**
+         * Opsional. Angka besar dengan keterangan, misalnya "48 MP" dan "Kamera utama".
+         */
+        stats?:
+          | {
+              value: string;
+              label?: string | null;
+              id?: string | null;
+            }[]
+          | null;
+        /**
+         * Hanya untuk tata letak Explorer. Tiap item: judul, penjelasan, dan gambar yang tampil saat item dibuka.
+         */
+        items?:
+          | {
+              title: string;
+              body: string;
+              image: number | Media;
+              id?: string | null;
+            }[]
+          | null;
+        id?: string | null;
+      }[]
+    | null;
   category?: (number | null) | ProductCategory;
   images?:
     | {
@@ -2378,7 +2425,33 @@ export interface ProductsSelect<T extends boolean = true> {
   title?: T;
   slug?: T;
   sku?: T;
+  tagline?: T;
   description?: T;
+  highlights?:
+    | T
+    | {
+        layout?: T;
+        eyebrow?: T;
+        title?: T;
+        text?: T;
+        image?: T;
+        stats?:
+          | T
+          | {
+              value?: T;
+              label?: T;
+              id?: T;
+            };
+        items?:
+          | T
+          | {
+              title?: T;
+              body?: T;
+              image?: T;
+              id?: T;
+            };
+        id?: T;
+      };
   category?: T;
   images?:
     | T

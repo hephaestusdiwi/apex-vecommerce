@@ -1,3 +1,4 @@
+import type { ShopProduct } from '@/content/shop'
 import type { PostData, ProjectData } from '@/content/types'
 import type { SiteSettings } from '@/content/site'
 import { absoluteUrl, resolveSeo, SITE_URL } from './seo'
@@ -78,6 +79,39 @@ export const postJsonLd = (post: PostData, site: SiteSettings) => {
           { '@type': 'ListItem', position: 1, name: 'Home', item: SITE_URL },
           { '@type': 'ListItem', position: 2, name: 'Blog', item: absoluteUrl('/blog') },
           { '@type': 'ListItem', position: 3, name: post.title, item: url },
+        ],
+      },
+    ],
+  }
+}
+
+
+export const productJsonLd = (product: ShopProduct, site: SiteSettings) => {
+  const url = absoluteUrl(`/shop/${product.slug}`)
+  return {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Product',
+        url,
+        name: product.title,
+        description: product.tagline || product.description || undefined,
+        sku: product.sku ?? undefined,
+        category: product.category?.title,
+        image: product.images.length > 0 ? product.images.map((image) => absoluteUrl(image.src)) : undefined,
+        offers: {
+          '@type': 'Offer',
+          url,
+          priceCurrency: 'IDR',
+          price: product.price,
+          availability: product.soldOut ? 'https://schema.org/OutOfStock' : 'https://schema.org/InStock',
+        },
+      },
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: site.siteName, item: SITE_URL },
+          { '@type': 'ListItem', position: 2, name: product.title, item: url },
         ],
       },
     ],
