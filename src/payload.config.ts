@@ -12,6 +12,7 @@ import { Users } from './collections/Users'
 import { Media } from './collections/Media'
 import { Pages } from './collections/Pages'
 import { SiteSettings } from './globals/SiteSettings'
+import { SiteChrome } from './globals/SiteChrome'
 import { ContactSettings } from './globals/ContactSettings'
 import { Projects } from './collections/Projects'
 import { Posts } from './collections/Posts'
@@ -22,6 +23,7 @@ import { Visits } from './collections/Visits'
 import { EditorialReviews } from './collections/EditorialReviews'
 import { EditorialNotes } from './collections/EditorialNotes'
 import { WorkflowSettings } from './globals/WorkflowSettings'
+import { HomeFeatures } from './globals/HomeFeatures'
 import { editorialEndpoints } from './editorial/endpoints'
 import { userEndpoints } from './users/endpoints'
 import { ServicePackages } from './collections/ServicePackages'
@@ -74,7 +76,7 @@ export default buildConfig({
     },
   },
   collections: [Users, Media, Videos, Projects, Pages, PostCategories, Posts, Contacts, Visits, EditorialReviews, EditorialNotes, ServicePackages, BookingBlackouts, Bookings, Addresses, ProductCategories, Products, StockMovements, Carts, Orders, OrderStatusEvents],
-  globals: [SiteSettings, ContactSettings, WorkflowSettings, BookingSettings],
+  globals: [SiteSettings, ContactSettings, WorkflowSettings, BookingSettings, HomeFeatures, SiteChrome],
   endpoints: [...editorialEndpoints, ...userEndpoints, ...shopEndpoints],
   jobs: {
     tasks: [expireBookingsTask, bookingRemindersTask, expireOrdersTask],

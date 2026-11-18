@@ -61,6 +61,35 @@ export const Products: CollectionConfig = {
       label: 'Tagline',
       admin: { description: 'Opsional. Kalimat singkat di bawah nama produk (kartu katalog dan halaman detail).' },
     },
+    {
+      name: 'heroVideo',
+      type: 'upload',
+      relationTo: 'videos',
+      admin: {
+        description: 'Opsional, latar layar penuh di bagian paling atas halaman detail. Foto pertama produk jadi banner, tanpa video',
+      },
+    },
+    {
+      name: 'featuresHeading',
+      type: 'text',
+      maxLength: 120,
+      label: 'Judul slide keunggulan',
+      admin: { description: 'Kosong = Keunggulan demi keunggulan' },
+    },
+    {
+      name: 'featureSlides',
+      type: 'array',
+      label: 'Slide keunggulan',
+      maxRows: 8,
+      admin: {
+        description: 'Opsional, tiap slide = satu video atau gambar dengan teks di tengah atas, tampil sebagai slider dibawah hero',
+      },
+      fields: [
+        { name: 'text', type: 'textarea', required: true, maxLength: 300, label: 'Teks slide', admin: { description: 'Tekan Enter untuk pindah baris.' } },
+        { name: 'video', type: 'upload', relationTo: 'videos', label: 'Video', admin: { description: 'Diputar tanpa suara dan berulang.' } },
+        { name: 'image', type: 'upload', relationTo: 'media', label: 'Gambar', admin: { description: 'Poster video, atau latar kalau tanpa video. Isi video atau gambar.' } },
+      ],
+    },
     { name: 'description', type: 'textarea', maxLength: 5000 },
     {
       name: 'highlights',

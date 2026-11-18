@@ -1,14 +1,15 @@
 import { cache } from 'react'
 import type { Product } from '@/payload-types'
 import { getPayloadClient } from '@/lib/payload'
-import { toMedia } from './mapper'
-import type { MediaAsset } from './types'
+import { toMedia, toVideoAsset } from './mapper'
+import type { MediaAsset, VideoAsset } from './types'
 
 export type ShopCategory = { id: number; slug: string; title: string }
 
 export type ShopHighlightLayout = 'media' | 'split' | 'statement' | 'explorer'
 export type ShopStat = { value: string; label: string }
 export type ShopExplorerItem = { id: string; title: string; body: string; image: MediaAsset }
+export type ShopFeatureSlide = { id: string; text: string; image: MediaAsset | null; video: VideoAsset | null }
 
 export type ShopHighlight = {
   id: string
@@ -41,6 +42,10 @@ export type ShopProduct = {
   /** Dibuat dalam 30 hari terakhir: dipakai untuk label "Baru". */
   isNew: boolean
   highlights: ShopHighlight[]
+  heroVideo: VideoAsset | null
+  featuresHeading: string
+  /** Slide keunggulan di bawah hero; slide tanpa teks atau tanpa video/gambar dilewati. */
+  featureSlides: ShopFeatureSlide[]
 }
 
 const ACTIVE = { active: { equals: true } }
@@ -55,6 +60,14 @@ const toImages = (doc: Product): MediaAsset[] =>
   (doc.images ?? []).flatMap((row): MediaAsset[] => {
     const media = toMedia(row.image)
     return media ? [{ ...media, alt: row.alt?.trim() || media.alt }] : []
+  })
+
+const toFeatureSlides = (doc: Product): ShopFeatureSlide[] =>
+  (doc.featureSlides ?? []).flatMap((row, index): ShopFeatureSlide[] => {
+    const image = toMedia(row.image)
+    const video = toVideoAsset(row.video)
+    const text = row.text?.trim()
+    return text && (image || video) ? [{ id: row.id ?? `${doc.id}-slide-${index}`, text, image, video }] : []
   })
 
 const toHighlights = (doc: Product): ShopHighlight[] =>
@@ -109,6 +122,9 @@ export const mapShopProduct = (doc: Product): ShopProduct => {
     lowStock: tracked && stock >= 1 && stock <= (doc.lowStockThreshold ?? 5),
     isNew: Date.now() - new Date(doc.createdAt).getTime() < 30 * 24 * 60 * 60 * 1000,
     highlights: toHighlights(doc),
+    heroVideo: toVideoAsset(doc.heroVideo),
+    featuresHeading: doc.featuresHeading?.trim() || 'Keunggulan demi keunggulan.',
+    featureSlides: toFeatureSlides(doc),
   }
 }
 

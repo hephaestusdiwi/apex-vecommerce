@@ -1,24 +1,23 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createContext, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 
-type Props = { slides: ReactNode[]; label: string; interval?: number }
+// 1. Tambahkan reportDuration ke Context
+export const SlideStateContext = createContext<{
+  current: boolean
+  playing: boolean
+  reportDuration?: (ms: number) => void
+}>({
+  current: true,
+  playing: true,
+})
 
-// Lebar slide = lebar isi container toko; track selebar layar (full-bleed), jadi slide tetangga mengintip sampai tepi layar.
+type Props = { slides: ReactNode[]; label: string; interval?: number; overlayControls?: boolean }
+
 const SLIDE_WIDTH =
   'min(calc(100cqw - 2 * var(--store-pad, 1.25rem)), calc(var(--store-max, 1260px) - 2 * var(--store-pad, 1.25rem)))'
 
-/**
- * Slider ala galeri Apple: slide aktif selalu di tengah (selebar container), tetangganya mengintip sampai tepi layar,
- * autoplay dengan timer yang terlihat (titik aktif memanjang dan terisi), tombol jeda/putar, loop di ujung.
- *
- * Timer = animasi CSS pada titik aktif; `animationend` memajukan slide, jadi jeda cukup menjeda animasinya dan
- * progres yang terlihat selalu sama dengan waktu sebenarnya. Autoplay berhenti saat slider keluar layar, tab
- * tersembunyi, fokus ada di dalam slider, atau pengunjung meminta reduced motion.
- *
- * Komponen ini sengaja diletakkan di luar `.store-container`: track-nya harus selebar layar.
- */
-export function MediaSlider({ slides, label, interval = 5000 }: Props) {
+export function MediaSlider({ slides, label, interval = 5000, overlayControls = false }: Props) {
   const count = slides.length
   const multiple = count > 1
   const rootRef = useRef<HTMLDivElement>(null)
@@ -36,8 +35,20 @@ export function MediaSlider({ slides, label, interval = 5000 }: Props) {
   const [inView, setInView] = useState(true)
   const [pageVisible, setPageVisible] = useState(true)
 
-  const running = multiple && userPlaying && !focused && inView && pageVisible && !reduced
+  // 2. Simpan durasi khusus tiap slide (dalam ms)
+  const [durations, setDurations] = useState<Record<number, number>>({})
 
+  const setSlideDuration = useCallback((index: number, ms: number) => {
+    setDurations((prev) => (prev[index] === ms ? prev : { ...prev, [index]: ms }))
+  }, [])
+
+  const mediaPlaying = userPlaying && !focused && inView && pageVisible && !reduced
+  const running = multiple && mediaPlaying
+
+  // Durasi untuk slide yang sedang aktif (fallback ke prop `interval` jika bukan video / belum load)
+  const currentDuration = durations[active] ?? interval
+
+  // ... (bagian useEffect, slideCenterOffset, goTo, next, onScroll, onKeyDown tetap sama persis) ...
   useEffect(() => {
     const query = window.matchMedia('(prefers-reduced-motion: reduce)')
     setReduced(query.matches)
@@ -62,7 +73,6 @@ export function MediaSlider({ slides, label, interval = 5000 }: Props) {
     programmatic.current = null
   }, [])
 
-  // Browser yang mendukung `scrollend` mengakhiri status "scroll terprogram" tepat saat animasi selesai.
   useEffect(() => {
     const track = trackRef.current
     if (!track) return
@@ -70,7 +80,6 @@ export function MediaSlider({ slides, label, interval = 5000 }: Props) {
     return () => track.removeEventListener('scrollend', endProgrammatic)
   }, [endProgrammatic])
 
-  // Posisi tengah slide dihitung dari getBoundingClientRect, bukan offsetLeft: tidak bergantung pada offsetParent.
   const slideCenterOffset = (track: HTMLElement, slide: HTMLElement) => {
     const trackRect = track.getBoundingClientRect()
     const slideRect = slide.getBoundingClientRect()
@@ -82,7 +91,6 @@ export function MediaSlider({ slides, label, interval = 5000 }: Props) {
       const track = trackRef.current
       const slide = slideRefs.current[index]
       if (!track || !slide) return
-      // Selama scroll terprogram berjalan, abaikan deteksi scroll supaya slide aktif tidak berganti di tengah jalan.
       endProgrammatic()
       programmatic.current = setTimeout(() => (programmatic.current = null), 1500)
       track.scrollTo({ left: track.scrollLeft + slideCenterOffset(track, slide), behavior: reduced ? 'auto' : 'smooth' })
@@ -95,7 +103,6 @@ export function MediaSlider({ slides, label, interval = 5000 }: Props) {
 
   const next = () => goTo((activeRef.current + 1) % count)
 
-  // Geser manual (swipe/trackpad): setelah berhenti, slide terdekat ke tengah menjadi aktif dan timer mulai dari awal.
   const onScroll = () => {
     if (programmatic.current) return
     if (settle.current) clearTimeout(settle.current)
@@ -123,7 +130,15 @@ export function MediaSlider({ slides, label, interval = 5000 }: Props) {
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (!multiple) return
     const target =
-      event.key === 'ArrowRight' ? Math.min(active + 1, count - 1) : event.key === 'ArrowLeft' ? Math.max(active - 1, 0) : event.key === 'Home' ? 0 : event.key === 'End' ? count - 1 : null
+      event.key === 'ArrowRight'
+        ? Math.min(active + 1, count - 1)
+        : event.key === 'ArrowLeft'
+          ? Math.max(active - 1, 0)
+          : event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? count - 1
+              : null
     if (target === null) return
     event.preventDefault()
     goTo(target)
@@ -143,11 +158,19 @@ export function MediaSlider({ slides, label, interval = 5000 }: Props) {
     <div
       ref={rootRef}
       role="region"
+      className="relative"
       aria-roledescription="carousel"
       aria-label={label}
-      onFocusCapture={() => setFocused(true)}
+      onFocusCapture={(event) => {
+        // Hanya pause jika fokus berasal dari navigasi keyboard (:focus-visible), bukan klik mouse/tap
+        if (event.target.matches(':focus-visible')) {
+          setFocused(true)
+        }
+      }}
       onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false)
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setFocused(false)
+        }
       }}
     >
       <div className="@container">
@@ -171,7 +194,6 @@ export function MediaSlider({ slides, label, interval = 5000 }: Props) {
                 role="group"
                 aria-roledescription="slide"
                 aria-label={`${index + 1} dari ${count}`}
-                // Slide tetangga hanya memusatkan dirinya saat diklik atau difokuskan; isinya baru bisa dipakai setelah di tengah.
                 onClickCapture={(event) => {
                   if (multiple && !current) {
                     event.preventDefault()
@@ -183,14 +205,22 @@ export function MediaSlider({ slides, label, interval = 5000 }: Props) {
                   if (multiple && !current) goTo(index)
                 }}
                 style={{ width: 'var(--slide-w)' }}
-                // Fokus keyboard di track ditandai pada slide aktif saja; ring pada track akan melebar selebar layar.
                 className={`flex shrink-0 snap-center rounded-[1.75rem] transition-opacity duration-500 motion-reduce:transition-none ${
                   current || !multiple
                     ? 'opacity-100 group-focus-visible/track:outline-2 group-focus-visible/track:outline-offset-4 group-focus-visible/track:outline-accent'
                     : 'opacity-60'
                 }`}
               >
-                {slide}
+                {/* 3. Kirim reportDuration khusus untuk index slide ini */}
+                <SlideStateContext.Provider
+                  value={{
+                    current: current || !multiple,
+                    playing: mediaPlaying,
+                    reportDuration: (ms) => setSlideDuration(index, ms),
+                  }}
+                >
+                  {slide}
+                </SlideStateContext.Provider>
               </div>
             )
           })}
@@ -198,8 +228,8 @@ export function MediaSlider({ slides, label, interval = 5000 }: Props) {
       </div>
 
       {multiple ? (
-        <div className="mt-6 flex items-center justify-center gap-3">
-          <div className="flex items-center gap-2 rounded-full bg-hairline px-4 py-3">
+        <div className={overlayControls ? 'absolute inset-x-0 bottom-6 flex items-center justify-center gap-3' : 'mt-6 flex items-center justify-center gap-3'}>
+          <div className={`flex items-center gap-2 rounded-full px-4 py-3 ${overlayControls ? 'bg-black/35 backdrop-blur-xl' : 'bg-hairline'}`}>
             {slides.map((_, index) => {
               const current = index === active
               return (
@@ -215,13 +245,17 @@ export function MediaSlider({ slides, label, interval = 5000 }: Props) {
                 >
                   {current ? (
                     <span
-                      key={cycle}
+                      // 4. Tambahkan currentDuration di key agar animasi reset jika durasi video baru terbaca
+                      key={`${cycle}-${currentDuration}`}
                       aria-hidden="true"
                       className="absolute inset-0 origin-left rounded-full bg-ink"
                       style={
                         reduced
                           ? undefined
-                          : { animation: `slider-progress ${interval}ms linear forwards`, animationPlayState: running ? 'running' : 'paused' }
+                          : {
+                              animation: `slider-progress ${currentDuration}ms linear forwards`,
+                              animationPlayState: running ? 'running' : 'paused',
+                            }
                       }
                       onAnimationEnd={next}
                     />
@@ -234,7 +268,7 @@ export function MediaSlider({ slides, label, interval = 5000 }: Props) {
             type="button"
             onClick={() => setUserPlaying((value) => !value)}
             aria-label={userPlaying ? 'Jeda pemutaran otomatis' : 'Putar otomatis'}
-            className="flex size-10 items-center justify-center rounded-full bg-hairline text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className={`flex size-10 items-center justify-center rounded-full text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${overlayControls ? 'bg-black/35 backdrop-blur-xl' : 'bg-hairline'}`}
           >
             {userPlaying ? (
               <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">

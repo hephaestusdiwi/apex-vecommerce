@@ -132,6 +132,8 @@ export interface Config {
     'contact-settings': ContactSetting;
     'workflow-settings': WorkflowSetting;
     'booking-settings': BookingSetting;
+    'home-features': HomeFeature;
+    'site-chrome': SiteChrome;
     'payload-jobs-stats': PayloadJobsStat;
   };
   globalsSelect: {
@@ -139,6 +141,8 @@ export interface Config {
     'contact-settings': ContactSettingsSelect<false> | ContactSettingsSelect<true>;
     'workflow-settings': WorkflowSettingsSelect<false> | WorkflowSettingsSelect<true>;
     'booking-settings': BookingSettingsSelect<false> | BookingSettingsSelect<true>;
+    'home-features': HomeFeaturesSelect<false> | HomeFeaturesSelect<true>;
+    'site-chrome': SiteChromeSelect<false> | SiteChromeSelect<true>;
     'payload-jobs-stats': PayloadJobsStatsSelect<false> | PayloadJobsStatsSelect<true>;
   };
   locale: null;
@@ -1225,6 +1229,34 @@ export interface Product {
    * Opsional. Kalimat singkat di bawah nama produk (kartu katalog dan halaman detail).
    */
   tagline?: string | null;
+  /**
+   * Opsional, latar layar penuh di bagian paling atas halaman detail. Foto pertama produk jadi banner, tanpa video
+   */
+  heroVideo?: (number | null) | Video;
+  /**
+   * Kosong = Keunggulan demi keunggulan
+   */
+  featuresHeading?: string | null;
+  /**
+   * Opsional, tiap slide = satu video atau gambar dengan teks di tengah atas, tampil sebagai slider dibawah hero
+   */
+  featureSlides?:
+    | {
+        /**
+         * Tekan Enter untuk pindah baris.
+         */
+        text: string;
+        /**
+         * Diputar tanpa suara dan berulang.
+         */
+        video?: (number | null) | Video;
+        /**
+         * Poster video, atau latar kalau tanpa video. Isi video atau gambar.
+         */
+        image?: (number | null) | Media;
+        id?: string | null;
+      }[]
+    | null;
   description?: string | null;
   /**
    * Opsional. Tampil sebagai bagian sorotan di halaman detail, sesuai urutan di sini.
@@ -2426,6 +2458,16 @@ export interface ProductsSelect<T extends boolean = true> {
   slug?: T;
   sku?: T;
   tagline?: T;
+  heroVideo?: T;
+  featuresHeading?: T;
+  featureSlides?:
+    | T
+    | {
+        text?: T;
+        video?: T;
+        image?: T;
+        id?: T;
+      };
   description?: T;
   highlights?:
     | T
@@ -2848,6 +2890,138 @@ export interface BookingSetting {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "home-features".
+ */
+export interface HomeFeature {
+  id: number;
+  /**
+   * Tampil di beranda, tepat di bawah "Jelajahi semua produk", sesuai urutan di sini
+   */
+  sections?:
+    | {
+        enabled?: boolean | null;
+        /**
+         * Teks kecil diatas judul, misalnya "Kualitas gambar tajam"
+         */
+        eyebrow?: string | null;
+        /**
+         * Tekan untuk untuk pindah baris
+         */
+        heading: string;
+        body?: string | null;
+        /**
+         * Opsional, disambung setelah paragraf dengan warna yang lebih gelap
+         */
+        bodyHighlight?: string | null;
+        stats?:
+          | {
+              label: string;
+              /**
+               * Mis. "48 MP". Boleh kosong bila memakai ikon.
+               */
+              value?: string | null;
+              icon?: ('none' | 'video') | null;
+              id?: string | null;
+            }[]
+          | null;
+        /**
+         * Tampil di bawah angka spesifikasi. PNG transparan paling cocok.
+         */
+        imageLeft?: (number | null) | Media;
+        /**
+         * Gambar besar disisi kanan
+         */
+        imageRight?: (number | null) | Media;
+        /**
+         * Mis. "Fitur-fitur baru, penuh kemungkinan." Kosong = tidak ada judul.
+         */
+        tabsHeading?: string | null;
+        tabsSize?: ('normal' | 'large' | 'full') | null;
+        /**
+         * Tiap fitur jadi satu tab, isi gambar, video atau keduanya (gambar menjadi poster video)
+         */
+        tabs?:
+          | {
+              tab: string;
+              title: string;
+              description: string;
+              image?: (number | null) | Media;
+              /**
+               * Opsional, diputar tanpa suara dan berulang dengan tombol jeda
+               */
+              video?: (number | null) | Video;
+              id?: string | null;
+            }[]
+          | null;
+        id?: string | null;
+      }[]
+    | null;
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "site-chrome".
+ */
+export interface SiteChrome {
+  id: number;
+  /**
+   * Logo, nama situs, dan tautan menu diatur di Site Settings (Logo dan Navigasi).
+   */
+  ' navbar'?: {
+    /**
+     * Kalau mati, Keranjang muncul sebagai tautan teks di menu
+     */
+    showCart?: boolean | null;
+  };
+  /**
+   * Kalau semua bagian footer kosong, footer lama (daftar tautan Navigasi + Instagram) tetap dipakai.
+   */
+  footer?: {
+    /**
+     * Teks kecil, kosongkan satu baris diantara paragraf untuk memisahkan
+     */
+    note?: string | null;
+    columns?:
+      | {
+          title: string;
+          links?:
+            | {
+                label: string;
+                /**
+                 * Path lokal diawali /, mis. /shop. Eksternal gunakan https://.
+                 */
+                href: string;
+                id?: string | null;
+              }[]
+            | null;
+          id?: string | null;
+        }[]
+      | null;
+    /**
+     * Kosong = © tahun berjalan + nama situs. Semua hak dilindungi."
+     */
+    legalText?: string | null;
+    legalLinks?:
+      | {
+          label: string;
+          /**
+           * Path lokal diawali /, mis. /shop. Eksternal gunakan https://.
+           */
+          href: string;
+          id?: string | null;
+        }[]
+      | null;
+    /**
+     * Opsional,  misalnya Finlandia
+     */
+    regionLabel?: string | null;
+  };
+  updatedAt?: string | null;
+  createdAt?: string | null;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-jobs-stats".
  */
 export interface PayloadJobsStat {
@@ -2963,6 +3137,88 @@ export interface BookingSettingsSelect<T extends boolean = true> {
     | {
         email?: T;
         id?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "home-features_select".
+ */
+export interface HomeFeaturesSelect<T extends boolean = true> {
+  sections?:
+    | T
+    | {
+        enabled?: T;
+        eyebrow?: T;
+        heading?: T;
+        body?: T;
+        bodyHighlight?: T;
+        stats?:
+          | T
+          | {
+              label?: T;
+              value?: T;
+              icon?: T;
+              id?: T;
+            };
+        imageLeft?: T;
+        imageRight?: T;
+        tabsHeading?: T;
+        tabsSize?: T;
+        tabs?:
+          | T
+          | {
+              tab?: T;
+              title?: T;
+              description?: T;
+              image?: T;
+              video?: T;
+              id?: T;
+            };
+        id?: T;
+      };
+  updatedAt?: T;
+  createdAt?: T;
+  globalType?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "site-chrome_select".
+ */
+export interface SiteChromeSelect<T extends boolean = true> {
+  ' navbar'?:
+    | T
+    | {
+        showCart?: T;
+      };
+  footer?:
+    | T
+    | {
+        note?: T;
+        columns?:
+          | T
+          | {
+              title?: T;
+              links?:
+                | T
+                | {
+                    label?: T;
+                    href?: T;
+                    id?: T;
+                  };
+              id?: T;
+            };
+        legalText?: T;
+        legalLinks?:
+          | T
+          | {
+              label?: T;
+              href?: T;
+              id?: T;
+            };
+        regionLabel?: T;
       };
   updatedAt?: T;
   createdAt?: T;

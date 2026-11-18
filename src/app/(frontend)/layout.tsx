@@ -7,6 +7,7 @@ import { SiteFooter } from '@/components/site/SiteFooter'
 import { SiteFonts } from '@/components/site/SiteFonts'
 import { SiteHeader } from '@/components/site/SiteHeader'
 import { getSiteSettings } from '@/content/site'
+import { getSiteChrome } from '@/content/siteChrome'
 import './styles.css'
 import { Poppins } from 'next/font/google'
 import { Lightbox } from '@/components/media/Lightbox'
@@ -40,7 +41,10 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const { siteName, logo, navigation, instagramUrl, photoSwipe, fonts } = await getSiteSettings()
+  const [{ siteName, logo, navigation, instagramUrl, photoSwipe, fonts }, chrome] = await Promise.all([
+    getSiteSettings(),
+    getSiteChrome(),
+  ])
 
   return (
     <html lang="en" className={poppins.variable}>
@@ -50,10 +54,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <body className="relative flex min-h-screen flex-col">
         <MotionProvider />
         <PageViewTracker />
-        <SiteHeader siteName={siteName} logo={logo} navigation={navigation} />
+        <SiteHeader siteName={siteName} logo={logo} navigation={navigation} showCart={chrome.showCart} />
         <main className="flex-1">{children}</main>
         {photoSwipe ? <Lightbox /> : null}
-        <SiteFooter navigation={navigation} instagramUrl={instagramUrl} />
+        <SiteFooter siteName={siteName} navigation={navigation} instagramUrl={instagramUrl} footer={chrome.footer} />
       </body>
     </html>
   )

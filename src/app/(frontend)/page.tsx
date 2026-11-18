@@ -5,6 +5,8 @@ import { Shopfront } from '@/components/shop/Shopfront'
 import { StoreHero } from '@/components/shop/StoreHero'
 import { categoriesOf, getShopProducts } from '@/content/shop'
 import { getSiteSettings } from '@/content/site'
+import { getHomeFeatureSections } from '@/content/homeFeatures'
+import { HomeFeatures } from '@/components/site/HomeFeatures'
 import { JsonLd } from '@/components/seo/JsonLd'
 import { siteJsonLd } from '@/lib/jsonLd'
 
@@ -16,7 +18,11 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function HomePage() {
-  const [site, products] = await Promise.all([getSiteSettings(), getShopProducts()])
+  const [site, products, featureSections] = await Promise.all([
+    getSiteSettings(),
+    getShopProducts(),
+    getHomeFeatureSections(),
+  ])
   return (
     <div data-store="light">
       <JsonLd data={siteJsonLd(site)} />
@@ -30,6 +36,7 @@ export default async function HomePage() {
         </div>
         <Shopfront products={products} categories={categoriesOf(products)} />
       </section>
+      <HomeFeatures sections={featureSections} />
     </div>
   )
 }
